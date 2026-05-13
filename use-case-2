@@ -1,0 +1,63 @@
+./demo-uc2-block-url.sh 
+
+=== 0. Simulated investigation result ===
+Threat under investigation:
+  threat_id:      T-1778715077
+  fileSha256:     d41d8cd98f00b204e9800998ecf8427e
+  pivoting on download history reveals:
+  malicious_url:  bad.example.com
+
+=== 1. Read current Netskope URL Lists (sanity check) ===
+GET http://127.0.0.1:8080/rest/Netskope-API/v2/api/v2/policy/urllist
+[
+  {
+    "id": 1001,
+    "name": "S1_AutoBlock",
+    "data": {
+      "type": "exact",
+      "urls": [
+        "placeholder.invalid"
+      ]
+    }
+  }
+]
+  URL list id=1001 confirmed present.
+
+=== 2. Append the malicious URL to the URL list ===
+PATCH http://127.0.0.1:8080/rest/Netskope-API/v2/api/v2/policy/urllist/1001/append
+body: {
+  "data": {
+    "urls": [
+      "bad.example.com"
+    ],
+    "type": "exact"
+  }
+}
+{
+  "status": "success",
+  "modified": 1
+}
+  Append OK.
+
+=== 3. Deploy URL list changes ===
+POST http://127.0.0.1:8080/rest/Netskope-API/v2/api/v2/policy/urllist/deploy
+{
+  "status": "deployed"
+}
+  Deploy OK.
+
+=== 4. Audit note that would be added to SentinelOne threat T-1778715077 ===
+POST /web/api/v2.1/threats/notes
+{
+  "data": {
+    "text": "Netskope action: appended bad.example.com to Custom URL List id=1001; policy deployed."
+  },
+  "filter": {
+    "ids": [
+      "T-1778715077"
+    ]
+  }
+}
+
+Use Case 2: end-to-end run complete.
+Tip: re-run with MALICIOUS_URL=another-bad.example.com to add more entries.
