@@ -1,0 +1,84 @@
+```
+./demo-uc1-enrich.sh 
+
+=== 0. Simulated SentinelOne threat payload ===
+{
+  "threat": {
+    "id":               "T-1778714973",
+    "username":         "alice@example.com",
+    "fileSha256":       "d41d8cd98f00b204e9800998ecf8427e",
+    "confidenceLevel":  "suspicious",
+    "classification":   "Malware"
+  }
+}
+
+=== 1. Query Netskope alerts for the user (last 7 days) ===
+GET http://127.0.0.1:8080/rest/Netskope-API/v2/api/v2/events/data/alert?starttime=1778110173&query=user eq "alice@example.com"
+{
+  "status": "success",
+  "result": [
+    {
+      "alert_type": "DLP",
+      "severity": "high",
+      "user": "alice@example.com",
+      "app": "Google Drive",
+      "timestamp_iso": "2026-05-12T10:00:00Z"
+    },
+    {
+      "alert_type": "Malware",
+      "severity": "high",
+      "user": "alice@example.com",
+      "app": "OneDrive",
+      "timestamp_iso": "2026-05-12T11:30:00Z"
+    }
+  ]
+}
+
+  Alerts total: 2  High-sev: 2  DLP: 1
+
+=== 2. Query Netskope UCI (User Confidence Index) ===
+POST http://127.0.0.1:8080/rest/Netskope-API/v2/api/v2/ubadatasvc/user/uci  body={"user":"alice@example.com","fromTime":1778110173}
+{
+  "user": "alice@example.com",
+  "uci": 412,
+  "trend": "down",
+  "window": {
+    "fromTime": 0,
+    "toTime": 1715600000
+  }
+}
+
+  UCI score: 412  Trend: down
+
+=== 3. Compute verdict ===
+  Verdict: HIGH_RISK_USER
+
+=== 4. Note that would be added to SentinelOne threat T-1778714973 ===
+POST /web/api/v2.1/threats/notes
+body:
+{
+  "data": {
+    "text": "Netskope enrichment for alice@example.com (7d): alerts=2, high=2, dlp=1, uci=412 (trend=down). Verdict=HIGH_RISK_USER."
+  },
+  "filter": {
+    "ids": [
+      "T-1778714973"
+    ]
+  }
+}
+
+=== 5. Analyst verdict update (only when HIGH_RISK_USER) ===
+POST /web/api/v2.1/threats/analyst-verdict
+{
+  "data": {
+    "analystVerdict": "suspicious"
+  },
+  "filter": {
+    "ids": [
+      "T-1778714973"
+    ]
+  }
+}
+
+Use Case 1: end-to-end run complete.
+```
