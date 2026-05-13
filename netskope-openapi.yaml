@@ -1,0 +1,205 @@
+openapi: 3.0.3
+info:
+  title: Netskope-API
+  version: v2
+  description: >
+    Generated subset of Netskope REST API v2 based on the endpoints explicitly
+    referenced in SentinelOne integration documentation.
+
+servers:
+  - url: https://{tenant}.goskope.com
+    variables:
+      tenant: { default: example }
+
+security:
+  - NetskopeApiToken: []
+
+components:
+  securitySchemes:
+    NetskopeApiToken:
+      type: apiKey
+      in: header
+      name: Netskope-Api-Token
+
+  schemas:
+    GenericObject:
+      type: object
+      additionalProperties: true
+
+    AlertListResponse:
+      type: object
+      additionalProperties: true
+
+    UrlListResponse:
+      type: object
+      additionalProperties: true
+
+    UciRequest:
+      type: object
+      required: [user, fromTime]
+      properties:
+        user: { type: string, example: user@example.com }
+        fromTime: { type: integer, format: int64, example: 0 }
+
+    UrlListPatchRequest:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [urls, type]
+          properties:
+            urls:
+              type: array
+              items: { type: string }
+              example: [www.google.com]
+            type: { type: string, example: exact }
+
+paths:
+  /api/v2/events/data/alert:
+    get:
+      operationId: listAlerts
+      summary: Get Netskope alerts
+      x-microcks-operation:
+        dispatcher: FALLBACK
+        dispatcherRules: |-
+          {
+            "dispatcher": "QUERY_ARGS",
+            "dispatcherRules": "query",
+            "fallback": "default"
+          }
+      parameters:
+        - { name: limit,     in: query, schema: { type: integer, default: 1000 } }
+        - { name: offset,    in: query, schema: { type: integer, default: 0 } }
+        - { name: starttime, in: query, schema: { type: integer, format: int64 } }
+        - { name: endtime,   in: query, schema: { type: integer, format: int64 } }
+        - { name: query,     in: query, schema: { type: string } }
+        - { name: type,      in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Successful alert retrieval.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertListResponse' }
+              examples:
+                default:
+                  value:
+                    status: success
+                    result:
+                      - alert_type: DLP
+                        severity: high
+                        user: alice@example.com
+                        app: Google Drive
+                        timestamp_iso: "2026-05-12T10:00:00Z"
+                      - alert_type: Malware
+                        severity: high
+                        user: alice@example.com
+                        app: OneDrive
+                        timestamp_iso: "2026-05-12T11:30:00Z"
+
+  /api/v2/ubadatasvc/user/uci:
+    post:
+      operationId: getUserUci
+      summary: Get user UCI
+      x-microcks-operation:
+        dispatcher: FALLBACK
+        dispatcherRules: |-
+          {
+            "dispatcher": "JSON_BODY",
+            "dispatcherRules": "{\"exp\":\"/user\",\"operator\":\"presence\",\"cases\":{\"default\":\"\"}}",
+            "fallback": "default"
+          }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UciRequest' }
+            examples:
+              default:
+                value: { user: alice@example.com, fromTime: 0 }
+      responses:
+        '200':
+          description: Successful UCI lookup.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+              examples:
+                default:
+                  value:
+                    user: alice@example.com
+                    uci: 412
+                    trend: down
+                    window: { fromTime: 0, toTime: 1715600000 }
+
+  /api/v2/policy/urllist:
+    get:
+      operationId: listUrlLists
+      summary: List URL lists
+      responses:
+        '200':
+          description: Successful URL list retrieval.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UrlListResponse' }
+              examples:
+                default:
+                  value:
+                    - id: 1001
+                      name: S1_AutoBlock
+                      data: { type: exact, urls: [placeholder.invalid] }
+
+  /api/v2/policy/urllist/deploy:
+    post:
+      operationId: deployUrlLists
+      summary: Deploy URL list changes
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+            examples:
+              default: { value: {} }
+      responses:
+        '200':
+          description: Successful deploy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+              examples:
+                default: { value: { status: deployed } }
+
+  /api/v2/policy/urllist/{id}/{action}:
+    patch:
+      operationId: modifyUrlListEntries
+      summary: Modify URL list entries (append/remove)
+      x-microcks-operation:
+        dispatcher: FALLBACK
+        dispatcherRules: |-
+          {
+            "dispatcher": "URI_PARTS",
+            "dispatcherRules": "id && action",
+            "fallback": "default"
+          }
+      parameters:
+        - { name: id,     in: path, required: true, schema: { type: integer, example: 1001 } }
+        - name: action
+          in: path
+          required: true
+          schema: { type: string, enum: [append, remove], example: append }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UrlListPatchRequest' }
+            examples:
+              default:
+                value:
+                  data: { urls: [bad.example.com], type: exact }
+      responses:
+        '200':
+          description: Successful URL list update.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
+              examples:
+                default: { value: { status: success, modified: 1 } }
